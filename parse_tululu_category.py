@@ -52,15 +52,13 @@ def check_title(title):
 
 
 def save_book(file_path, book_path, book):
-    if not os.path.exists(file_path):
-        os.makedirs(file_path)
+    os.makedirs(file_path, exist_ok=True)
     with open(book_path, 'w', encoding='utf-8') as file:
         file.write(book)
 
 
 def save_image(img_file_path, full_book_img_link, img_src):
-    if not os.path.exists(img_file_path):
-        os.makedirs(img_file_path)
+    os.makedirs(img_file_path, exist_ok=True)
     resp = requests.get(full_book_img_link)
     raise_redirect_error(resp)
 
