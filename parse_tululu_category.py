@@ -45,12 +45,6 @@ def get_book_id(reference):
     return book_id
 
 
-def check_title(title):
-    book_title = sanitize_filename(title)
-
-    return book_title
-
-
 def save_book(file_path, book_path, book):
     os.makedirs(file_path, exist_ok=True)
     with open(book_path, 'w', encoding='utf-8') as file:
@@ -66,13 +60,10 @@ def save_image(img_file_path, full_book_img_link, img_src):
         img_file.write(resp.content)
 
 
-def get_book_title_and_author(soup):
-    parsed_book_title_and_author = soup.select_one('#content h1').text
-    title, author_name = parsed_book_title_and_author.split('::')
-    title, author_name = title.strip(), author_name.strip()
-    book_title = check_title(title)
+def get_book_title(title):
+    book_title = sanitize_filename(title)
 
-    return book_title, author_name
+    return book_title
 
 
 def get_book_comments(soup):
@@ -108,7 +99,10 @@ def get_img_src(soup, skip_imgs, dest_folder):
 def get_book_info(book_id, dest_folder, skip_txt, skip_imgs, resp):
     url = f'http://tululu.org/b{book_id}/'
     soup = get_soup_obj(url)
-    book_title, author_name = get_book_title_and_author(soup)
+    parsed_book_title_and_author = soup.select_one('#content h1').text
+    title, author_name = parsed_book_title_and_author.split('::')
+    title, author_name = title.strip(), author_name.strip()
+    book_title = get_book_title(title)
     comments = get_book_comments(soup)
     genres = get_book_genres(soup)
     img_src = get_img_src(soup, skip_imgs, dest_folder)
