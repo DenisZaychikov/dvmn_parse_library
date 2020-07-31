@@ -67,19 +67,15 @@ def get_book_title(title):
 
 
 def get_book_comments(soup):
-    comments = []
     parsed_comments = soup.select('.texts .black')
-    for comment in parsed_comments:
-        comments.append(comment.text)
+    comments = [comment.text for comment in parsed_comments]
 
     return comments
 
 
 def get_book_genres(soup):
-    genres = []
     parsed_genres = soup.select('span.d_book a')
-    for genre in parsed_genres:
-        genres.append(genre.text)
+    genres = [genre.text for genre in parsed_genres]
 
     return genres
 
@@ -126,10 +122,28 @@ def get_book_info(book_id, dest_folder, skip_txt, skip_imgs, resp):
 
 
 def save_books_info_to_json(books_info, path_to_file):
-    if not os.path.exists(path_to_file):
-        os.makedirs(path_to_file)
+    os.makedirs(path_to_file, exist_ok=True)
     with open(os.path.join(path_to_file, 'books_info.json'), 'w') as file:
         json.dump(books_info, file, indent=2, ensure_ascii=False)
+
+
+def get_response(book_id):
+    url = f'http://tululu.org/txt.php?id={book_id}'
+    retries = 3
+    while retries > 0:
+        try:
+            resp = requests.get(url, allow_redirects=False)
+            resp.raise_for_status()
+        except requests.HTTPError:
+            pass
+        except requests.ConnectionError:
+            pass
+        else:
+            return resp
+        retries -= 1
+    if retries == 0:
+        print('Ошибка на сервере. Попробуйте скачать книги позже')
+        raise SystemExit()
 
 
 if __name__ == '__main__':
@@ -150,11 +164,9 @@ if __name__ == '__main__':
         references = soup.select('.bookimage a')
         for reference in references:
             book_id = get_book_id(reference)
-            url = f'http://tululu.org/txt.php?id={book_id}'
-            resp = requests.get(url, allow_redirects=False)
-            resp.raise_for_status()
-            if resp.status_code not in [301, 302]:
-                book_info = get_book_info(book_id, dest_folder, skip_txt, skip_imgs, resp)
+            response = get_response(book_id)
+            if response.status_code not in [301, 302]:
+                book_info = get_book_info(book_id, dest_folder, skip_txt, skip_imgs, response)
                 books_info.append(book_info)
     if not json_path:
         save_books_info_to_json(books_info, dest_folder)
