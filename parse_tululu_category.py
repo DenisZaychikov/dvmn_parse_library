@@ -6,6 +6,7 @@ import argparse
 import os
 from urllib.parse import urljoin
 from pathvalidate import sanitize_filename
+import time
 
 BOOKS_FOLDER = 'books'
 IMAGES_FOLDER = 'images'
@@ -131,6 +132,7 @@ def get_response(book_id):
     url = f'http://tululu.org/txt.php?id={book_id}'
     retries = 3
     while retries > 0:
+        time.sleep(1)
         try:
             resp = requests.get(url, allow_redirects=False, timeout=5)
             resp.raise_for_status()
