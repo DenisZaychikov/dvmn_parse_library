@@ -132,7 +132,7 @@ def get_response(book_id):
     retries = 3
     while retries > 0:
         try:
-            resp = requests.get(url, allow_redirects=False)
+            resp = requests.get(url, allow_redirects=False, timeout=5)
             resp.raise_for_status()
         except requests.HTTPError:
             pass
