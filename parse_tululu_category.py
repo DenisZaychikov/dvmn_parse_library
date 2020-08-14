@@ -167,7 +167,7 @@ if __name__ == '__main__':
         for reference in references:
             book_id = get_book_id(reference)
             response = get_response(book_id)
-            if response.status_code not in [301, 302]:
+            if response.status_code == 200:
                 book_info = get_book_info(book_id, dest_folder, skip_txt, skip_imgs, response)
                 books_info.append(book_info)
     if not json_path:
