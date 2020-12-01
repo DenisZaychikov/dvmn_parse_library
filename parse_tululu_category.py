@@ -12,6 +12,10 @@ BOOKS_FOLDER = 'books'
 IMAGES_FOLDER = 'images'
 
 
+class ServerError(Exception):
+    pass
+
+
 def create_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--start_page', type=int, default=1)
@@ -32,7 +36,8 @@ def raise_redirect_error(response):
 
 
 def get_soup_obj(url):
-    resp = requests.get(url, allow_redirects=False)
+    resp = requests.get(url, allow_redirects=False, verify=False)
+    resp.raise_for_status()
     raise_redirect_error(resp)
     soup = BeautifulSoup(resp.text, 'lxml')
 
@@ -54,17 +59,12 @@ def save_book(file_path, book_path, book):
 
 def save_image(img_file_path, full_book_img_link, img_src):
     os.makedirs(img_file_path, exist_ok=True)
-    resp = requests.get(full_book_img_link)
+    resp = requests.get(full_book_img_link, verify=False)
+    resp.raise_for_status()
     raise_redirect_error(resp)
 
     with open(img_src, 'wb') as img_file:
         img_file.write(resp.content)
-
-
-def get_book_title(title):
-    book_title = sanitize_filename(title)
-
-    return book_title
 
 
 def get_book_comments(soup):
@@ -81,32 +81,36 @@ def get_book_genres(soup):
     return genres
 
 
-def get_img_src(soup, skip_imgs, dest_folder):
-    if not skip_imgs:
-        parsed_book_img_link = soup.select_one('.bookimage img')['src']
-        full_book_img_link = urljoin('http://tululu.org/', parsed_book_img_link)
-        img_name = parsed_book_img_link.split('/')[-1]
-        img_src = os.path.join(dest_folder, IMAGES_FOLDER, img_name)
-        img_file_path = os.path.join(dest_folder, IMAGES_FOLDER)
-        save_image(img_file_path, full_book_img_link, img_src)
+def get_img_src(soup, dest_folder, url):
+    parsed_book_img_link = soup.select_one('.bookimage img')['src']
+    full_book_img_link = urljoin(url,
+                                 parsed_book_img_link)
+    img_name = parsed_book_img_link.split('/')[-1]
+    img_src = os.path.join(dest_folder, IMAGES_FOLDER, img_name)
+    img_file_path = os.path.join(dest_folder, IMAGES_FOLDER)
+    save_image(img_file_path, full_book_img_link, img_src)
 
-        return img_src
+    return img_src
 
 
-def get_book_info(book_id, dest_folder, skip_txt, skip_imgs, resp):
+def get_book_content(book_id, dest_folder, skip_txt, skip_imgs, resp):
     url = f'http://tululu.org/b{book_id}/'
     soup = get_soup_obj(url)
     parsed_book_title_and_author = soup.select_one('#content h1').text
     title, author_name = parsed_book_title_and_author.split('::')
     title, author_name = title.strip(), author_name.strip()
-    book_title = get_book_title(title)
+    book_title = sanitize_filename(title)
     comments = get_book_comments(soup)
     genres = get_book_genres(soup)
-    img_src = get_img_src(soup, skip_imgs, dest_folder)
+    if not skip_imgs:
+        img_src = get_img_src(soup, dest_folder, url)
+    else:
+        img_src = None
 
     if not skip_txt:
         book = resp.text
-        book_path = os.path.join(dest_folder, BOOKS_FOLDER, f'{book_title}.txt')
+        book_path = os.path.join(dest_folder, BOOKS_FOLDER,
+                                 f'{book_title}.txt')
         file_path = os.path.join(dest_folder, BOOKS_FOLDER)
         save_book(file_path, book_path, book)
     else:
@@ -122,7 +126,7 @@ def get_book_info(book_id, dest_folder, skip_txt, skip_imgs, resp):
     }
 
 
-def save_books_info_to_json(books_info, path_to_file):
+def save_books_content_to_json(books_info, path_to_file):
     os.makedirs(path_to_file, exist_ok=True)
     with open(os.path.join(path_to_file, 'books_info.json'), 'w') as file:
         json.dump(books_info, file, indent=2, ensure_ascii=False)
@@ -131,21 +135,21 @@ def save_books_info_to_json(books_info, path_to_file):
 def get_response(book_id):
     url = f'http://tululu.org/txt.php?id={book_id}'
     retries = 3
-    while retries > 0:
+    for retry in range(retries):
         time.sleep(1)
         try:
-            resp = requests.get(url, allow_redirects=False, timeout=5)
+            resp = requests.get(url, allow_redirects=False, timeout=5,
+                                verify=False)
             resp.raise_for_status()
-        except requests.HTTPError:
-            pass
-        except requests.ConnectionError:
-            pass
+        except(
+                requests.HTTPError,
+                requests.ConnectionError,
+                requests.RequestException
+        ) as error:
+            error_msg = error
         else:
             return resp
-        retries -= 1
-    if retries == 0:
-        print('Ошибка на сервере. Попробуйте скачать книги позже')
-        raise SystemExit()
+    raise ServerError(error_msg)
 
 
 if __name__ == '__main__':
@@ -159,7 +163,7 @@ if __name__ == '__main__':
         soup = get_soup_obj(url)
         end_page = soup.select('.npage')[-1].text
         end_page = int(end_page) + 1
-    books_info = []
+    books_content = []
     for page in range(start_page, end_page):
         url = f'http://tululu.org/{category}/{page}'
         soup = get_soup_obj(url)
@@ -168,9 +172,18 @@ if __name__ == '__main__':
             book_id = get_book_id(reference)
             response = get_response(book_id)
             if response.status_code == 200:
-                book_info = get_book_info(book_id, dest_folder, skip_txt, skip_imgs, response)
-                books_info.append(book_info)
+                try:
+                    book_content = get_book_content(book_id, dest_folder,
+                                                    skip_txt,
+                                                    skip_imgs, response)
+                except(
+                        requests.HTTPError,
+                        requests.ConnectionError
+                ) as err:
+                    continue
+                else:
+                    books_content.append(book_content)
     if not json_path:
-        save_books_info_to_json(books_info, dest_folder)
+        save_books_content_to_json(books_content, dest_folder)
     else:
-        save_books_info_to_json(books_info, json_path)
+        save_books_content_to_json(books_content, json_path)
