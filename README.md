@@ -33,4 +33,4 @@ python3 parse_tululu_category.py --start_page 10 --end_page 20 --dest_folder D:\
 
 ## Цели проекта
 
-Код написан в учебных целях — это урок в курсе по Python и веб-разработке на сайте [Devman](https://dvmn.org).
+Код написан в учебных целях. Это урок в курсе по Python и веб-разработке на сайте [Devman](https://dvmn.org).
