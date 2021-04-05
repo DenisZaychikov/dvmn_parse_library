@@ -12,7 +12,7 @@ BOOKS_FOLDER = 'books'
 IMAGES_FOLDER = 'images'
 
 
-class ServerError(Exception):
+class TululuServerError(Exception):
     pass
 
 
@@ -25,6 +25,7 @@ def create_parser():
     parser.add_argument('--skip_txt', action='store_const', const=False)
     parser.add_argument('--json_path')
     parser.add_argument('--category', default='l55')
+    parser.add_argument('--json_file_name', default='books_info.json')
 
     return parser
 
@@ -93,7 +94,7 @@ def get_img_src(soup, dest_folder, url):
     return img_src
 
 
-def get_book_content(book_id, dest_folder, skip_txt, skip_imgs, resp):
+def get_book_content(book_id, dest_folder, skip_txt, skip_imgs, book):
     url = f'http://tululu.org/b{book_id}/'
     soup = get_soup_obj(url)
     parsed_book_title_and_author = soup.select_one('#content h1').text
@@ -102,19 +103,16 @@ def get_book_content(book_id, dest_folder, skip_txt, skip_imgs, resp):
     book_title = sanitize_filename(title)
     comments = get_book_comments(soup)
     genres = get_book_genres(soup)
+    img_src = None
+    book_path = None
     if not skip_imgs:
         img_src = get_img_src(soup, dest_folder, url)
-    else:
-        img_src = None
 
     if not skip_txt:
-        book = resp.text
         book_path = os.path.join(dest_folder, BOOKS_FOLDER,
                                  f'{book_title}.txt')
         file_path = os.path.join(dest_folder, BOOKS_FOLDER)
         save_book(file_path, book_path, book)
-    else:
-        book_path = None
 
     return {
         'title': book_title,
@@ -126,15 +124,16 @@ def get_book_content(book_id, dest_folder, skip_txt, skip_imgs, resp):
     }
 
 
-def save_books_content_to_json(books_info, path_to_file):
+def save_books_content_to_json(books_info, path_to_file, json_file_name):
     os.makedirs(path_to_file, exist_ok=True)
-    with open(os.path.join(path_to_file, 'books_info.json'), 'w') as file:
+    with open(os.path.join(path_to_file, json_file_name), 'w') as file:
         json.dump(books_info, file, indent=2, ensure_ascii=False)
 
 
-def get_response(book_id):
+def download_book(book_id):
     url = f'http://tululu.org/txt.php?id={book_id}'
     retries = 3
+    error_msg = ''
     for retry in range(retries):
         time.sleep(1)
         try:
@@ -149,7 +148,7 @@ def get_response(book_id):
             error_msg = error
         else:
             return resp
-    raise ServerError(error_msg)
+    raise TululuServerError(error_msg)
 
 
 if __name__ == '__main__':
@@ -157,7 +156,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     start_page, end_page, dest_folder = args.start_page, args.end_page, args.dest_folder
     skip_imgs, skip_txt, json_path = args.skip_imgs, args.skip_txt, args.json_path
-    category = args.category
+    category, json_file_name = args.category, args.json_file_name
     if start_page and not end_page:
         url = f'http://tululu.org/{category}/{start_page}/'
         soup = get_soup_obj(url)
@@ -170,20 +169,21 @@ if __name__ == '__main__':
         references = soup.select('.bookimage a')
         for reference in references:
             book_id = get_book_id(reference)
-            response = get_response(book_id)
-            if response.status_code == 200:
+            book = download_book(book_id)
+            if book.status_code == 200:
                 try:
                     book_content = get_book_content(book_id, dest_folder,
                                                     skip_txt,
-                                                    skip_imgs, response)
+                                                    skip_imgs, book.text)
                 except(
                         requests.HTTPError,
                         requests.ConnectionError
                 ) as err:
+                    print(err)
                     continue
                 else:
                     books_content.append(book_content)
     if not json_path:
-        save_books_content_to_json(books_content, dest_folder)
+        save_books_content_to_json(books_content, dest_folder, json_file_name)
     else:
-        save_books_content_to_json(books_content, json_path)
+        save_books_content_to_json(books_content, json_path, json_file_name)
